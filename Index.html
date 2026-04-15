@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile IC Master Ultimate</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; padding: 15px; }
+        .card { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        #result { margin-bottom: 20px; padding: 15px; border-radius: 12px; font-size: 18px; font-weight: bold; min-height: 90px; display: flex; align-items: center; justify-content: center; border: 2px dashed #ddd; background: #fafafa; line-height: 1.4; }
+        .found { background-color: #d4edda !important; color: #155724; border: 2px solid #28a745 !important; }
+        .not-found { background-color: #f8d7da !important; color: #721c24; border: 2px solid #dc3545 !important; }
+        h1 { color: #007bff; font-size: 24px; margin-bottom: 20px; }
+        input[type="text"] { width: 100%; padding: 15px; margin-bottom: 15px; border: 2px solid #007bff; border-radius: 10px; font-size: 18px; text-align: center; outline: none; }
+        button { width: 100%; padding: 15px; background: #28a745; color: white; border: none; border-radius: 10px; font-size: 20px; cursor: pointer; font-weight: bold; }
+        .camera-sec { border: 2px dashed #007bff; padding: 15px; border-radius: 15px; margin-top: 20px; background: #f8fbff; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div id="result">رزلٹ یہاں نظر آئے گا</div>
+    <h1>موبائل آئی سی ماسٹر</h1>
+    <input type="text" id="icInput" placeholder="کوڈ لکھیں یا اسکین کریں...">
+    <button onclick="searchIC()">تلاش کریں</button>
+    <div class="camera-sec" onclick="document.getElementById('cameraInput').click()">
+        <p>📸 فوٹو سے اسکین کریں</p>
+        <input type="file" accept="image/*" id="cameraInput" style="display:none" onchange="scanImage(this)">
+    </div>
+</div>
+
+<script>
+    // --- 6 بڑی کمپنیوں کا مکمل ڈیٹا بیس (2GB سے 1TB) ---
+    const icData = {
+        // --- Samsung (2GB to 1TB) ---
+        "KLM2G": "Samsung 2GB EMMC",
+        "K9F1G": "Samsung 2GB NAND",
+        "KLM4G": "Samsung 4GB EMMC",
+        "KLM8G": "Samsung 8GB EMMC",
+        "KMQN1": "Samsung 8GB EMMC + 1GB RAM",
+        "KMQE6": "Samsung 16GB ROM + 2GB RAM",
+        "KLMBG": "Samsung 32GB EMMC",
+        "KLMAG": "Samsung 64GB EMMC",
+        "KLMCG": "Samsung 64GB EMMC",
+        "KLUDG": "Samsung 128GB UFS 2.1",
+        "KM5P8": "Samsung 128GB ROM + 8GB RAM",
+        "KLUEG": "Samsung 256GB UFS 2.1",
+        "KLUFG": "Samsung 512GB UFS 3.0",
+        "KM2V7": "Samsung 512GB UFS 3.1",
+        "KM5V7": "Samsung 1TB UFS 3.1",
+
+        // --- Toshiba / Kioxia (2GB to 256GB) ---
+        "THGBMBG5": "Toshiba 2GB EMMC",
+        "TC58NVG1": "Toshiba 2GB NAND Flash",
+        "THGBMBG6": "Toshiba 8GB EMMC",
+        "THGBMBG7": "Toshiba 16GB EMMC",
+        "THGBMBG8": "Toshiba 32GB EMMC",
+        "THGBMHG9": "Toshiba 64GB EMMC",
+        "THGAF8": "Toshiba 128GB UFS",
+        "THGAF9": "Toshiba 256GB UFS",
+
+        // --- SK Hynix (2GB to 512GB) ---
+        "H9DA4": "SK Hynix 2GB EMMC",
+        "H9TQ1": "SK Hynix 2GB EMMC",
+        "H27U1": "SK Hynix 2GB NAND",
+        "H9TP3": "SK Hynix 16GB ROM + 2GB RAM",
+        "H9TQ2": "SK Hynix 32GB ROM + 3GB RAM",
+        "H9HQ1": "SK Hynix 128GB ROM + 8GB RAM",
+        "HN8T1": "SK Hynix 512GB UFS 3.1",
+
+        // --- Micron ---
+        "MTFC2": "Micron 2GB EMMC",
+        "MTFC8": "Micron 8GB EMMC",
+        "MTFC16": "Micron 16GB EMMC",
+        "MTFC64": "Micron 64GB EMMC",
+        "MTFC12": "Micron 128GB EMMC",
+
+        // --- SanDisk ---
+        "SDIN5": "SanDisk 8GB EMMC",
+        "SDIN7": "SanDisk 16GB EMMC",
+        "SDINA": "SanDisk 64GB EMMC",
+        "SDIND": "SanDisk 128GB EMMC",
+
+        // --- Kingston ---
+        "EP08": "Kingston 8GB EMMC",
+        "EP16": "Kingston 16GB EMMC",
+        "EMMC32": "Kingston 32GB EMMC",
+        "EMMC64": "Kingston 64GB EMMC"
+    };
+
+    async function scanImage(input) {
+        if (input.files && input.files[0]) {
+            const resultDiv = document.getElementById("result");
+            resultDiv.innerHTML = "🔍 اسکیننگ ہو رہی ہے...";
+            try {
+                const { data: { text } } = await Tesseract.recognize(input.files[0], 'eng');
+                document.getElementById("icInput").value = text.toUpperCase().trim();
+                searchIC();
+            } catch (e) { resultDiv.innerHTML = "ایرر!"; }
+        }
+    }
+
+    function searchIC() {
+        let input = document.getElementById("icInput").value.trim().toUpperCase();
+        let resultDiv = document.getElementById("result");
+        if (!input) return;
+
+        let match = "";
+        for (let key in icData) {
+            if (input.includes(key)) { match = key; break; }
+        }
+
+        if (match) {
+            resultDiv.innerHTML = "✅ آئی سی: " + match + "<br>ℹ️ " + icData[match];
+            resultDiv.className = "found";
+        } else {
+            resultDiv.innerHTML = "❌ یہ کوڈ لسٹ میں نہیں ہے۔";
+            resultDiv.className = "not-found";
+        }
+    }
+</script>
+</body>
+</html>
